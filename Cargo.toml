@@ -8,8 +8,6 @@ zewif = { path = "../zewif" }
 
 anyhow = "1.0.95"
 hex = "0.4.3"
-# bc-components = "^0.19.0"
-# bc-envelope = "^0.26.0"
 zcash_primitives = { git = "https://github.com/zingolabs/librustzcash.git", tag = "zcash_client_sqlite-0.12.1_plus_zingolabs_changes-test_2" }
 zcash_client_backend = { git = "https://github.com/zingolabs/librustzcash.git", tag = "zcash_client_sqlite-0.12.1_plus_zingolabs_changes-test_2", features = [
     "lightwalletd-tonic",
