@@ -7,7 +7,7 @@ license = "MIT or Apache 2.0"
 [dependencies]
 zewif = "0.1.0"
 
-anyhow = "1.0.95"
+thiserror = "2"
 hex = "0.4.3"
 zcash_primitives = { git = "https://github.com/zingolabs/librustzcash.git", tag = "zcash_client_sqlite-0.12.1_plus_zingolabs_changes-test_2" }
 zcash_client_backend = { git = "https://github.com/zingolabs/librustzcash.git", tag = "zcash_client_sqlite-0.12.1_plus_zingolabs_changes-test_2", features = [

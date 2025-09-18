@@ -1,6 +1,5 @@
 use std::io::{self, ErrorKind, Read};
 
-use anyhow::{Context, Result, bail};
 use bip0039::Mnemonic;
 use byteorder::{LittleEndian, ReadBytesExt};
 use zcash_client_backend::proto::service::TreeState;
@@ -16,13 +15,16 @@ use zingolib::{
 };
 
 use zewif::Data;
-use zewif::{parse, parser::prelude::*};
-
-use super::{WalletCapability, ZingoWallet};
+use crate::{
+    binary::BinaryReader,
+    error::{ParseError, Result},
+    WalletCapability,
+    ZingoWallet,
+};
 
 #[derive(Debug)]
 pub struct ZingoParser<'a> {
-    pub parser: Parser<'a>,
+    reader: BinaryReader<'a>,
 }
 
 impl<'a> ZingoParser<'a> {
@@ -31,8 +33,8 @@ impl<'a> ZingoParser<'a> {
     }
 
     pub fn new(dump: &'a Data) -> Self {
-        let parser = Parser::new(dump);
-        Self { parser }
+        let reader = BinaryReader::new(dump);
+        Self { reader }
     }
 
     pub fn parse(&mut self) -> Result<ZingoWallet> {
@@ -42,24 +44,21 @@ impl<'a> ZingoParser<'a> {
 
     #[allow(unused_variables)]
     pub fn parse_with_param(&mut self, config: ZingoConfig) -> Result<ZingoWallet> {
-        let p = &mut self.parser;
-        // p.trace = true;
-        let external_version = parse!(p, u64, "external_version")?;
+        let reader = &mut self.reader;
+        let external_version = reader.read_u64("external_version")?;
         if external_version > Self::serialized_version() {
-            bail!(
-                "Don't know how to read wallet version {}. Do you have the latest version?",
-                external_version
-            );
+            return Err(ParseError::UnsupportedWalletVersion {
+                found: external_version,
+                max: Self::serialized_version(),
+            });
         }
 
-        let wallet_capability = parse!(
-            p,
-            WalletCapability,
-            param = config.chain,
-            "wallet_capability"
-        )?;
-        let mut blocks =
-            Vector::read(&mut *p, |r| BlockData::read(r)).with_context(|| "BlockData")?;
+        let wallet_capability =
+            WalletCapability::read_from(reader.cursor_mut(), config.chain)?;
+
+        let mut blocks = reader.read_with("BlockData", |cursor| {
+            Vector::read(cursor, |r| BlockData::read(r))
+        })?;
         if external_version <= 14 {
             // Reverse the order, since after version 20, we need highest-block-first
             // TODO: Consider order between 14 and 20.
@@ -67,81 +66,88 @@ impl<'a> ZingoParser<'a> {
         }
 
         let transactions = if external_version <= 14 {
-            TxMap::read_old(&mut *p, wallet_capability.as_ref()).with_context(|| "TxMap old")
+            reader.read_with("TxMap old", |cursor| {
+                TxMap::read_old(cursor, wallet_capability.as_ref())
+            })
         } else {
-            TxMap::read(&mut *p, wallet_capability.as_ref()).with_context(|| "TxMap")
+            reader.read_with("TxMap", |cursor| {
+                TxMap::read(cursor, wallet_capability.as_ref())
+            })
         }?;
 
-        let chain_name = parse_string::<u64>(&mut *p)?;
+        let chain_name = reader.read_string_with_u64_length("chain_name")?;
 
         let wallet_options = if external_version <= 23 {
             WalletOptions::default()
         } else {
-            WalletOptions::read(&mut *p).with_context(|| "WalletOptions")?
+            reader.read_with("WalletOptions", |cursor| WalletOptions::read(cursor))?
         };
 
-        // let birthday = p.read_u64::<LittleEndian>()?;
-        let birthday = parse!(p, u64, "birthday")?;
+        let birthday = reader.read_u64("birthday")?;
 
         if external_version <= 22 {
             let _sapling_tree_verified = if external_version <= 12 {
                 true
             } else {
-                // reader.read_u8()? == 1
-                parse!(p, u8, "sapling_tree_verified")? == 1
+                reader.read_bool("sapling_tree_verified")?
             };
         }
 
         let verified_tree = if external_version <= 21 {
             None
         } else {
-            Optional::read(&mut *p, |r| {
-                use prost::Message;
+            reader.read_with("TreeState", |cursor| {
+                Optional::read(cursor, |r| {
+                    use prost::Message;
 
-                let buf = Vector::read(r, |r| r.read_u8())?;
-                TreeState::decode(&buf[..])
-                    .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))
+                    let buf = Vector::read(r, |reader| reader.read_u8())?;
+                    TreeState::decode(&buf[..])
+                        .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))
+                })
             })?
         };
 
         let price = if external_version <= 13 {
             WalletZecPriceInfo::default()
         } else {
-            WalletZecPriceInfo::read(&mut *p)?
+            reader.read_with("WalletZecPriceInfo", |cursor| WalletZecPriceInfo::read(cursor))?
         };
 
         let _orchard_anchor_height_pairs = if external_version == 25 {
-            Vector::read(&mut *p, |r| {
-                let mut anchor_bytes = [0; 32];
-                r.read_exact(&mut anchor_bytes)?;
-                let block_height = BlockHeight::from_u32(r.read_u32::<LittleEndian>()?);
-                Ok((
-                    Option::<orchard::Anchor>::from(orchard::Anchor::from_bytes(anchor_bytes))
-                        .ok_or(io::Error::new(ErrorKind::InvalidData, "Bad orchard anchor"))?,
-                    block_height,
-                ))
+            reader.read_with("orchard_anchor_height_pairs", |cursor| {
+                Vector::read(cursor, |r| {
+                    let mut anchor_bytes = [0; 32];
+                    r.read_exact(&mut anchor_bytes)?;
+                    let block_height = BlockHeight::from_u32(r.read_u32::<LittleEndian>()?);
+                    let anchor = Option::<orchard::Anchor>::from(
+                        orchard::Anchor::from_bytes(anchor_bytes),
+                    )
+                    .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Bad orchard anchor"))?;
+                    Ok((anchor, block_height))
+                })
             })?
         } else {
             Vec::new()
         };
 
-        let seed_bytes = Vector::read(&mut *p, |r| r.read_u8())?;
+        let seed_bytes = reader.read_with("seed_bytes", |cursor| {
+            Vector::read(cursor, |reader| reader.read_u8())
+        })?;
         let mnemonic = if !seed_bytes.is_empty() {
             let account_index = if external_version >= 28 {
-                parse!(p, u32, "account_index")?
+                reader.read_u32("account_index")?
             } else {
                 0
             };
             Some((
-                Mnemonic::from_entropy(seed_bytes)
-                    .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))?,
+                Mnemonic::from_entropy(seed_bytes).map_err(ParseError::from)?,
                 account_index,
             ))
         } else {
             None
         };
 
-        let remaining = p.remaining();
+        let remaining = reader.remaining();
 
         Ok(ZingoWallet::new(
             external_version,

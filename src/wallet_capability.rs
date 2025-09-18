@@ -1,6 +1,4 @@
-use zewif::parser::prelude::*;
-use anyhow::Result;
-use std::sync::Arc;
+use std::{io::Read, sync::Arc};
 
 use append_only_vec::AppendOnlyVec;
 use zcash_client_backend::wallet::TransparentAddressMetadata;
@@ -10,6 +8,8 @@ use zingolib::{
     config::ChainType,
     wallet::{keys::unified::UnifiedKeyStore, traits::ReadableWriteable},
 };
+
+use crate::error::{ParseError, Result};
 
 pub struct WalletCapability(zingolib::wallet::keys::unified::WalletCapability);
 
@@ -33,11 +33,11 @@ impl WalletCapability {
     }
 }
 
-impl ParseWithParam<ChainType> for WalletCapability {
-    fn parse(p: &mut Parser, param: ChainType) -> Result<Self> {
-        Ok(Self(
-            zingolib::wallet::keys::unified::WalletCapability::read(p, param)?,
-        ))
+impl WalletCapability {
+    pub fn read_from<R: Read>(reader: &mut R, chain: ChainType) -> Result<Self> {
+        let capability = zingolib::wallet::keys::unified::WalletCapability::read(reader, chain)
+            .map_err(|source| ParseError::read("wallet_capability", source))?;
+        Ok(Self(capability))
     }
 }
 
