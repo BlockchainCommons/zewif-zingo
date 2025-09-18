@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT or Apache 2.0"
 
 [dependencies]
-zewif = { path = "../zewif" }
+zewif = "0.1.0"
 
 anyhow = "1.0.95"
 hex = "0.4.3"
@@ -30,6 +30,7 @@ zingolib = { git = "https://github.com/zingolabs/zingolib.git", rev = "965e81228
 append-only-vec = { git = "https://github.com/zancas/append-only-vec.git", branch = "add_debug_impl" }
 byteorder = "1.5.0"
 bip0039 = "=0.11.0"
+proptest = "=1.6.0"
 
 [features]
 default = []
