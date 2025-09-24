@@ -1,9 +1,9 @@
 use std::io::{Cursor, Read};
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use zewif::Data;
 
 use crate::error::{ParseError, Result};
-use zewif::Data;
 
 /// Thin wrapper around `Cursor` that provides convenience helpers for
 /// length-checked reads and contextual error reporting.
@@ -82,7 +82,5 @@ impl<'a> BinaryReader<'a> {
         op(&mut self.cursor).map_err(|source| ParseError::read(label, source))
     }
 
-    pub fn cursor_mut(&mut self) -> &mut Cursor<&'a [u8]> {
-        &mut self.cursor
-    }
+    pub fn cursor_mut(&mut self) -> &mut Cursor<&'a [u8]> { &mut self.cursor }
 }

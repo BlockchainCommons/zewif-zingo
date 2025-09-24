@@ -60,7 +60,5 @@ impl ParseError {
 }
 
 impl From<MnemonicError> for ParseError {
-    fn from(source: MnemonicError) -> Self {
-        Self::MnemonicEntropy { source }
-    }
+    fn from(source: MnemonicError) -> Self { Self::MnemonicEntropy { source } }
 }
