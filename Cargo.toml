@@ -21,7 +21,7 @@ zcash_keys = { git = "https://github.com/zingolabs/librustzcash.git", tag = "zca
     "orchard",
 ] }
 zcash_encoding = { git = "https://github.com/zingolabs/librustzcash.git", tag = "zcash_client_sqlite-0.12.1_plus_zingolabs_changes-test_2" }
-prost = { version = "0.13.5", features = ["prost-derive"] }
+prost = "0.14.1"
 orchard = "0.11.0"
 zcash_protocol = "0.5.0"
 zingolib = { git = "https://github.com/zingolabs/zingolib.git", rev = "965e81228d3a1d99b76c1e3c71202d8fdbbd41dc", features = [
